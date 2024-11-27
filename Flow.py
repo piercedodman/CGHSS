@@ -27,9 +27,6 @@ class EmergencyPowerFlowchartGenerator:
         return self.triggers
     
     def generate_flowchart(self, entity: str, trigger: str) -> graphviz.Digraph:
-        """
-        Generate a flowchart for the specified empowered entity and triggering event.
-        """
         # Filter data for the specific entity and trigger
         filtered_df = self.df[
             (self.df['Entity.Empowered'] == entity) & 
@@ -39,70 +36,53 @@ class EmergencyPowerFlowchartGenerator:
         if filtered_df.empty:
             raise ValueError(f"No data found for entity '{entity}' and trigger '{trigger}'")
         
-    
-    
         # Create a new directed graph with adjusted settings
         dot = graphviz.Digraph(comment=f'{entity} - {trigger} Power Flow')
         dot.attr(rankdir='TB', size='40,40', dpi='600')
         
-        # Create main entity and trigger nodes with rank constraints
+        # Create main entity node at top
         with dot.subgraph(name='cluster_top') as top:
-            top.attr(rank='min')  # Force to top
+            top.attr(rank='min')
             top.node('entity', self.wrap_text(entity), 
                     shape='box', style='filled', fillcolor='lightblue')
         
+        # Create triggering event node
         with dot.subgraph(name='cluster_trigger') as trigger_level:
-            trigger_level.attr(rank='same')  # Force to same level
+            trigger_level.attr(rank='same')
             trigger_level.node('trigger', self.wrap_text(trigger), 
                     shape='diamond', style='filled', fillcolor='lightgreen')
         
         dot.edge('entity', 'trigger')
         
-        # Process each row as a complete unit
-        for idx, row in filtered_df.iterrows():
-            cluster_name = f'cluster_group_{idx}'
-            with dot.subgraph(name=cluster_name) as group:
-                group.attr(label=f'Power Group {idx + 1}', style='filled', fillcolor='white')
-                
-                # Create citation node
-                citation = f"{row['Citation']} {row['Parent.Statute']}"
-                if not pd.isna(citation):
-                    citation_id = f'citation_{idx}'
-                    group.node(citation_id, self.wrap_text(f"Citation:\n{citation}"),
-                            shape='box', style='filled', fillcolor='lightyellow')
-                    dot.edge('trigger', citation_id)
+        # Group by unique locations
+        locations = filtered_df['Location'].unique()
+        
+        # Create a node for each unique location
+        for loc in locations:
+            loc_id = f'location_{loc.lower().replace(" ", "_")}'
+            dot.node(loc_id, self.wrap_text(f"Location:\n{loc}"),
+                    shape='box', style='filled', fillcolor='lightyellow')
+            dot.edge('trigger', loc_id)
+            
+            # Filter rows for this location
+            loc_rows = filtered_df[filtered_df['Location'] == loc]
+            
+            # Add all powers for this location
+            for idx, row in loc_rows.iterrows():
+                if not pd.isna(row['Document.Description']):
+                    power_id = f'power_{idx}'
+                    dot.node(power_id, self.wrap_text(f"Power:\n{row['Document.Description']}"),
+                            shape='box', style='filled', fillcolor='lightgray')
+                    dot.edge(loc_id, power_id)
                     
-                    # Add implementation details directly connected to citation
-                    if not pd.isna(row['Document.Description']):
-                        desc_id = f'desc_{idx}'
-                        group.node(desc_id, self.wrap_text(f"Implementation:\n{row['Document.Description']}"),
-                                shape='box', style='filled', fillcolor='lightgray')
-                        dot.edge(citation_id, desc_id)
-                    
-                    # Add health emergency details connected to citation
-                    if not pd.isna(row['Describe.Health.Emergency']):
-                        health_id = f'health_{idx}'
-                        group.node(health_id, self.wrap_text(f"Health Impact:\n{row['Describe.Health.Emergency']}"),
+                    # Add citation connected to power
+                    citation = f"{row['Citation']} {row['Parent.Statute']}"
+                    if not pd.isna(citation):
+                        citation_id = f'citation_{idx}'
+                        dot.node(citation_id, self.wrap_text(f"Citation:\n{citation}"),
                                 shape='box', style='filled', fillcolor='mistyrose')
-                        dot.edge(citation_id, health_id)
-                    
-                    # Add military involvement if present
-                    if not pd.isna(row['Military.Involvement..Federal.']):
-                        military_id = f'military_{idx}'
-                        group.node(military_id, self.wrap_text(f"Military Involvement:\n{row['Military.Involvement..Federal.']}"),
-                                shape='box', style='filled', fillcolor='lightpink')
-                        dot.edge(citation_id, military_id)
-                    
-                    # Add funding information if present
-                    if not pd.isna(row['Funding.Stream.']):
-                        funding_id = f'funding_{idx}'
-                        funding_text = row['Funding.Stream.']
-                        if not pd.isna(row['Funding.Stream.Description']):
-                            funding_text += f"\n{row['Funding.Stream.Description']}"
-                        group.node(funding_id, self.wrap_text(f"Funding:\n{funding_text}"),
-                                shape='box', style='filled', fillcolor='lightgreen')
-                        dot.edge(citation_id, funding_id)
-
+                        dot.edge(power_id, citation_id)
+        
         return dot
         
     def save_flowchart(self, dot: graphviz.Digraph, output_path: str, format: str = 'png') -> None:
