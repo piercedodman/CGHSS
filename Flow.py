@@ -101,13 +101,6 @@ def main():
     print("\nInitializing generator and reading CSV file...")
     generator = EmergencyPowerFlowchartGenerator(csv_path)
     
-    print("\nAvailable Empowered Entities:")
-    for entity in generator.get_available_entities():
-        print(f"- {entity}")
-    
-    print("\nAvailable Triggering Events:")
-    for trigger in generator.get_available_triggers():
-        print(f"- {trigger}")
     
     # Get input from user
     entity = input("\nEnter empowered entity: ")
